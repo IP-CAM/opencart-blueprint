@@ -1,10 +1,15 @@
-# Ansible Playbook for Subutai OpenCart blueprint
+# Ansible Playbook for Subutai ELK blueprint
 ---
 
 - hosts: all
   gather_facts: false
   remote_user: root
   tasks: 
+    - name: Add elastic.co repo key
+      raw: wget -qO - https://artifacts.elastic.co/GPG-KEY-elasticsearch | sudo apt-key add -
+
+    - name: Enable ELK repositories
+      raw: echo "deb https://artifacts.elastic.co/packages/6.x/apt stable main" | sudo tee -a /etc/apt/sources.list.d/elastic-6.x.list
 
     - name: Install tools
       apt:
@@ -13,109 +18,30 @@
         update_cache: yes
         dpkg_options: force-confdef,force-confold,force-unsafe-io
       with_items: 
-        - php-fpm
-        - ucf
-        - debconf
-        - php-gd
-        - php-xml
-        - php-curl
-        - php-geoip
-        - php-mysql
-        - php-mbstring
-        - php-opcache
-        - php-readline
-        - php-json
-        - php-zip
-        - php-cli
-        - python-mysqldb
-        - wget
-        - apache2
         - unzip
-        - mariadb-server
+        - apt-transport-https
+        - default-jre
+        - nginx
 
-    - name: Enable mod_rewrite                                                            
-      apache2_module:                                                                     
-        name: rewrite                                                                     
-        state: present                                                                    
-                                                                                          
-    - name: Enable proxy_fcgi                                                             
-      apache2_module:                                                                     
-        name: proxy_fcgi                                                                  
-        state: present                                                                    
-                                                                                          
-    - name: Enable setenvif                                                               
-      apache2_module:                                                                     
-        name: setenvif                                                                    
-        state: present                                                                    
-                                                                                          
-    - name: Disable mpm_prefork                                                           
-      apache2_module:                                                                     
-        name: mpm_prefork                                                                 
-        state: absent                                                                     
-        ignore_configcheck: True
-    - name: Enable mpm_event                                                              
-      apache2_module:                                                                     
-        name: mpm_event                                                                   
-        state: present                                                                    
-        ignore_configcheck: True                                                          
-                                                                                          
-    - name: Use php7.0-fpm                                                                
-      file:                                                                               
-        state: link                                                                       
-        src: /etc/apache2/conf-available/php7.0-fpm.conf                                  
-        dest: /etc/apache2/conf-enabled/php7.0-fpm.conf                                   
-        force: yes
+    - name: Install ELK Packages
+      apt:
+        name: "{{ item }}"
+        state: latest
+        update_cache: yes
+        dpkg_options: force-confdef,force-confold,force-unsafe-io
+      with_items: 
+        - elasticsearch
+        - kibana
+        - logstash
 
-    - name: Create opencart database
-      mysql_db:
-        name: "{{ db_name }}"
-        state: present
-
-    - name: Set mariadb password
-      mysql_user:
-        name: root
-        password: "{{ db_passwd }}"
-        login_password: "{{ db_passwd }}"
-        check_implicit_admin: yes
-        state: present
-
-    - name: Allow access from network
-      raw: mysql -u root -p"{{ db_passwd }}" -e "GRANT ALL PRIVILEGES ON *.* TO 'root'@'localhost' IDENTIFIED BY \"{{ db_passwd }}\"; FLUSH PRIVILEGES;";
-      ignore_errors: yes
-
-    - name: Download and unzip
-      unarchive: 
-        src: "https://github.com/opencart/opencart/archive/3.0.2.0.zip"
-        dest: "/tmp"
-        remote_src: yes
-        validate_certs: no
-
-    - name: Clean artifact path
-      file:
-        state: absent
-        path: /var/www/html
-
-    - name: Create artifact path
-      file:
-        path: /var/www/html
-        state: directory
-
-    - name: Copy application content
-      raw: cp -r /tmp/opencart-*/upload/* /var/www/html/
-
-    - name: Move App config file
-      raw: cp /var/www/html/config-dist.php /var/www/html/config.php && cp /var/www/html/admin/config-dist.php /var/www/html/admin/config.php
-
-    - name: Fix permission
-      file:
-        path: /var/www/
-        owner: www-data
-        group: www-data
-        recurse: yes
-      
-    - name: Restart apache                                                                
-      service:                                                                            
-        name: apache2                                                                     
+    - name: Enable ELK Services
+      systemd:
+        name: "{{ item }}"
+        enabled: yes
         state: restarted
+      with_items:
+        - elasticsearch
+        - kibana
+        - logstash
 
 # vim: ts=2 et nowrap autoindent
